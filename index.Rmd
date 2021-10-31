@@ -19,72 +19,123 @@ tidy=TRUE, tidy.opts=list(width.cutoff=60), R.options=list(max.print=100))
 
 ## Data Wrangling, Exploration, Visualization
 
-### Name and EID here
+### Stacy Jong svj284
 
 #### Introduction 
 
-Paragraph or two introducing your datasets and variables, why they are interesting to you, etc.
+For this project I chose to look at environmental data across different cities in the U.S. This is interesting to me as I have lived in multiple cities across the U.S. and have seen varying climates and how that has affected the local culture, lifestyles, etc. I obtained two datasets in R packages: Angell from the carData package and USairpollution from the HSAUR3 package. The Angell dataset contains data mapping cities to their regions, moral composition, mobility, etc. The USairpollution dataset maps cities to their population, average precipitation, average temperature, average wind speeds, average SO2 levels, etc. I would expect to see relationships in this data such as increasing SO2 levels with increasing population, higher annual temperatures in the South, higher mobility levels in the West, etc.
 
 ```{R}
-# read your datasets in here, e.g., with read_csv()
-
+library(tidyverse)
+library(HSAUR3)
+library(carData)
+cities <- Angell
+pollution <- USairpollution
 ```
 
 #### Tidying: Reshaping
 
-If your datasets are tidy already, demonstrate that you can reshape data with pivot wider/longer here (e.g., untidy and then retidy). Alternatively, it may be easier to wait until the wrangling section so you can reshape your summary statistics. Note here if you are going to do this.
-
 ```{R}
-# your tidying code (if applicable; can also wait until wrangling section)
+pollution$city <- row.names(pollution)
+cities$city <- row.names(cities)
+
+tidy_cities <- cities
+tidy_cities$city <- cities$city %>% str_replace_all("_", " ")
 ```
 
+I tidied the datasets by first moving all the city names into a column of their own in both datasets(as the original datasets had the city names as row names). I then used str_replace_all() on the city variable in the cities dataset, since in the cities dataset, city names with two words were joined by an underscore while the city names in the pollution dataset were joined by a space. Thus I replaced the underscores in the city names in the cities dataset with a space to prepare for joining the two datasets in a later step.
+
+I demonstrate using pivot_longer in the summary statistics section.
     
 #### Joining/Merging
 
 ```{R}
-# your joining code
-
-# your joining code
+joined <- inner_join(tidy_cities, pollution, by="city")
+joined <- joined %>% relocate(city)
 ```
 
-Discussions of joining here. Feel encouraged to break up into more than once code chunk and discuss each in turn.
-
-####  Wrangling
+I joined the two datasets by the 'city' variable, and I chose to do an inner join in order to drop the cities in either dataset that did not appear in the other dataset. 
 
 ```{R}
-# your wrangling code
+nrow(tidy_cities)
+nrow(pollution)
+nrow(joined)
 
-# your wrangling code
+subset(tidy_cities, !(city %in% pollution$city))$city
+subset(pollution, !(city %in% tidy_cities$city))$city
 
-# your wrangling code
+subset(tidy_cities, city %in% pollution$city)$city
 ```
 
-Your discussion of wrangling section here. Feel encouraged to break up into more than once code chunk and discuss each in turn.
+The total observations in the cities dataset is 43, the total observations in the pollution dataset is 41, and the total observations in the joined dataset is 20. Those values also correspond to the number of unique IDs in each dataset, as each dataset does not have a city observed more than once. 
+
+The IDs that appear in the cities dataset but not in the pollution dataset include: "Rochester", "Syracuse", "Worcester", "Erie", "Bridgeport", "Dayton", "Reading", "Peoria", "Trenton", "Grand Rapids", "Toledo", "San Diego", "South Bend", "Akron", "Tacoma", "Flint", "Spokane", "Portland Oregon", "Fort Worth", "Oklahoma City", "Chattanooga", "Birmingham", "Tulsa"
+
+The IDs that appear in the pollutions dataset but not in the cities dataset include: "Albany", "Albuquerque", "Charleston", "Chicago", "Cincinnati", "Hartford", "Kansas City", Little Rock", "Minneapolis", "New Orleans", "Norfolk", "Omaha", "Philadelphia", "Phoenix", "Pittsburgh", "Providence", "Salt Lake City", "San Francisco", "St. Louis", "Washington", "Wilmington" 
+
+The IDs that appear in both datasets include: "Milwaukee", "Buffalo", "Des Moines", "Cleveland", "Denver", "Wichita", "Baltimore", "Detroit", "Seattle", "Indianapolis", "Columbus", "Richmond", "Houston", "Nashville", "Dallas", "Louisville", "Jacksonville", "Memphis", "Miami", "Atlanta"    
+
+The joined dataset has a total of 20 observations, with 84 observations dropped from the original two datasets. One issue is that this is too small of a dataset to draw conclusive relationships from, particularly in that there are some categorical variables with too few observations.
+
+
+####  Wrangling
+```{R}
+library(gt)
+range <- function(x, y){y-x}
+
+#summary statistics for numeric variables
+num_pivoted <- joined%>% pivot_longer(c(moral, hetero, mobility, SO2, temp, manu, popul, wind), names_to="numeric_var", values_to="val")
+
+num_pivoted %>% group_by(numeric_var) %>% summarize(mean=mean(val), sd=sd(val), var=var(val), lower_quart=quantile(val, probs=c(0.24)), upper_quart=quantile(val, probs=c(0.75)), min=min(val), max=max(val), range=range(min, max))
+
+#summary statistics for categorical variable - region
+joined %>% group_by(region) %>% summarize(count=n())
+
+#summary statistics for categorical variable - city
+joined %>% group_by(city) %>% summarize(count=n())
+
+#summary statistic grouped by categorical variable
+together <- num_pivoted %>% group_by(region, numeric_var) %>% summarize(mean=mean(val), sd=sd(val), var=var(val), lower_quart=quantile(val, probs=c(0.24)), upper_quart=quantile(val, probs=c(0.75)), min=min(val), max=max(val))
+
+together %>% gt %>% tab_header(title=md("**Summary Statistics**"), subtitle=md("Summary Statistics Grouped by U.S. Region"))
+
+```
+
+For the summary statistics for numeric variables, I generated statistics for the hetero, manu, mobility, moral, popul, SO2, temp, and wind variables. For each variable I calculated the mean, standard deviation, variance, lower quartile, upper_quartile, minimum, maximum, and range values. For the two categorical variables, region and city, I generated a table showing the counts for each category. Finally, I generated a table for the summary statistics grouped by region and the numeric variable. This table was also stylized using the gt package.
+
+
+```{R}
+joined %>% mutate(daily_precip = precip/predays) %>% arrange(desc(daily_precip))
+joined %>% select(region, mobility) %>% group_by(region) %>% summarize(avg_mobility = mean(mobility)) %>% arrange(desc(avg_mobility))
+joined %>% filter(region=="W") %>% arrange(desc(mobility))
+```
+
+I also generatedsome additional summary statistics that dived into some more interesting findings. The first table created in that section mutated the dataset by also calculating the average amount of precipitation per day for each city by dividing the average annual precipitation in inches by the average number of days with precipitation per year. Then by arranging this in descending order, we could see that many of the cities with a higher average precipitation per day was in the Southern region, suggesting that in the South there could be heavier but less frequent rainfall. A second table that I generated was created by selecting the region and mobility columns, grouping by region, calculating the average mobility of each region, and arranging in descending order. This showed that the Western region showed higher mobility levels than other regions such as the West, Midwest, and East. The third table that I generated filtered out the table and only kept the cities in the West, and arranged by descending mobility. Although there were only two cities that fell into the West category, it was interesting to see that Denver and Seattle had very similar levels of mobility, despite Seattle being right on the coast and Denver being located significantly more inland.
+
+NOTE: str_replace_all with regex was used previously in the tidying section.
 
 
 #### Visualizing
 
 ```{R}
-# your plot 1
+ggplot(joined, aes(x=popul, y=SO2)) + geom_point() + geom_smooth(method='lm') + theme_minimal() + scale_y_continuous(breaks=seq(0, 70, 10)) + scale_x_continuous(breaks=seq(0, 2000, 100)) + ggtitle("Relationship Between City Population and SO2 Content") + xlab("Population") + ylab("SO2 (mcg/m^3)")
 ```
 
-Your discussion of plot 1
+This visualization plots the population of individual cities against their corresponding values for SO2 content in the air in micrograms per cubic metre. A linear regression line was fitted to the plot, showing a positive linear relationship between population and SO2 content. However, the relationship is rather weak as the points do not closely follow the line, and there are a few outliers.
 
 ```{R}
-# your plot 2
+ggplot(joined, aes(x=region, y=precip)) + geom_bar(stat="summary", fun=mean, aes(fill=region)) + geom_errorbar(stat="summary", fun.data=mean_se, width=0.5) + theme(legend.position="none") + scale_y_continuous(breaks=seq(0, 60, 10)) + scale_fill_brewer() + ggtitle("Average Annual Precipitation by U.S. Region") +ylab("Precipitation (in)") + xlab("Region")
 ```
 
-Your discussion of plot 2
+This plot is a bar chart showing the average annual precipitation in inches across different regions in the United States (East, Midwest, South, and West). We can see that on average the Southern region of the U.S. has the highest precipitation in inches, whereas the West has the lowest. The error bar for the Western region is very wide, but this is likely due to limitations in the data (there being only one data point falling under the West category).
 
 ```{R}
-# your plot 3
+ggplot(joined, aes(x=region, y=temp, fill=region)) + geom_boxplot(width=.5, aes(fill=region)) + geom_jitter(alpha=.6, aes(color=region)) + theme(legend.position=c(0.9, 0.8)) + ggtitle("Average Annual Temperature by Region") + ylab("Temperature (F)") + xlab("Region")
 ```
 
-Your discussion of plot 3
+This is a boxplot of the average annual temperature in Fahrenheit across the different regions of the United States(East, Midwest, South, and West). From this plot we can see that the mean temperature for the South is significantly higher than the other three regions, whereas East, Midwest, and West all have similar average temperatures. Additionally, the South has a much wider interquartile range compared to the other three regions, suggesting that average temperatures vary significantly across different cities in the South.
 
 #### Concluding Remarks
-
-If any!
 
 
 
